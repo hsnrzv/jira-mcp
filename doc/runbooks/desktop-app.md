@@ -21,3 +21,8 @@ Settings live in `<user config dir>/jira-mcp/settings.json` (0600): `~/Library/A
 
 ## Building releases
 `scripts/build-release.sh` (needs Go + `zip`) cross-compiles static binaries into `dist/` (macOS arm64/amd64 `.app` bundles, Windows exe, Linux binary).
+
+## App icon
+`assets/icon.svg` is the source (original design: split diamond = tilted-tile/`< >` motif, MCP node hub, AI sparkles). Committed derivatives: `assets/AppIcon.icns` (copied into `Contents/Resources` of the macOS bundle, `CFBundleIconFile`), `assets/icon.ico` (embedded into the Windows exe via a temporary `.syso` generated with `go run github.com/tc-hib/go-winres`), `assets/icon.png`, and `internal/setupui/favicon.png` (setup UI). After editing the SVG run `scripts/generate-icons.sh` (needs Chrome, Python + Pillow, macOS `iconutil`).
+
+If an older icon-less copy is still shown in Finder/Launchpad after reinstalling, refresh the icon cache: `touch "/Applications/Jira MCP.app" && killall Dock`.
