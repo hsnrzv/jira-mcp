@@ -168,14 +168,22 @@ func (s *Server) readForm(r *http.Request) (settings.Settings, error) {
 	if err := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 64<<10)).Decode(&in); err != nil {
 		return in, errors.New("invalid request body")
 	}
+	fallback := ""
+	if cur, err := s.load(); err == nil {
+		fallback = cur.PersonalToken
+	}
+	return Normalize(in, fallback)
+}
+
+// Normalize trims the form values, upper-cases project keys and uses
+// fallbackToken when no token was entered. It is shared by all setup UIs.
+func Normalize(in settings.Settings, fallbackToken string) (settings.Settings, error) {
 	in.JiraURL = strings.TrimSpace(in.JiraURL)
 	in.PersonalToken = strings.TrimSpace(in.PersonalToken)
 	in.ProjectKeys = strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(in.ProjectKeys), " ", ""))
 	in.CustomCACertPath = strings.TrimSpace(in.CustomCACertPath)
 	if in.PersonalToken == "" {
-		if cur, err := s.load(); err == nil {
-			in.PersonalToken = cur.PersonalToken
-		}
+		in.PersonalToken = fallbackToken
 	}
 	if in.ProjectKeys == "" {
 		return in, errors.New("project key is required")
@@ -262,7 +270,11 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// validateAgainstJira checks the URL/PAT with /myself and that each project key exists.
+// Validate checks the URL/PAT with /myself and that each project key exists.
+func Validate(ctx context.Context, s settings.Settings) (string, error) {
+	return validateAgainstJira(ctx, s)
+}
+
 func validateAgainstJira(ctx context.Context, s settings.Settings) (string, error) {
 	if s.PersonalToken == "" {
 		return "", errors.New("personal access token is required")
@@ -319,6 +331,9 @@ func snippet(root, exe string, withType bool) string {
 	b, _ := json.MarshalIndent(map[string]any{root: map[string]any{"jira": entry}}, "", "  ")
 	return string(b)
 }
+
+// IconPNG returns the embedded application icon.
+func IconPNG() []byte { return faviconPNG }
 
 // OpenBrowser opens url in the default browser; failures are non-fatal.
 func OpenBrowser(url string) error {
