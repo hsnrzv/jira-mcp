@@ -16,12 +16,26 @@
   .row { display: flex; gap: .5rem; margin-top: 1.25rem; }
   button { padding: .55rem 1rem; font-size: 1rem; cursor: pointer; }
   button.primary { font-weight: 600; }
+  button.quit { margin-right: auto; font-weight: 600; color: #fff; background: #dc2626; border: 1px solid #b91c1c; border-radius: 4px; }
+  button.quit:hover { background: #b91c1c; }
   #msg { margin-top: 1rem; padding: .6rem; border-radius: 6px; display: none; white-space: pre-wrap; }
   #msg.ok { display: block; background: #e6f6ea; color: #14532d; }
   #msg.err { display: block; background: #fde8e8; color: #7f1d1d; }
   pre { background: rgba(127,127,127,.15); padding: .8rem; overflow-x: auto; border-radius: 6px; font-size: .85rem; }
   #result { display: none; margin-top: 1.5rem; }
   details { margin-top: 1rem; }
+  p.step { color: #777; font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; margin: 1rem 0 0; }
+  .dd { position: relative; margin-top: .3rem; }
+  #ddBtn { width: 100%; display: flex; justify-content: space-between; text-align: left; padding: .5rem; }
+  #ddText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-panel { margin-top: .25rem; border: 1px solid #999; border-radius: 6px; padding: .5rem; }
+  .dd-panel input[type=search] { width: 100%; padding: .45rem; box-sizing: border-box; font-size: 1rem; }
+  .dd-actions { display: flex; gap: .5rem; margin: .4rem 0; }
+  .dd-actions button { padding: .25rem .6rem; font-size: .85rem; }
+  #list { max-height: 260px; overflow-y: auto; }
+  #list label { margin: 0; padding: .25rem .2rem; font-weight: normal; cursor: pointer; }
+  #list label:hover { background: rgba(127,127,127,.15); }
+  #list .empty { color: #777; padding: .3rem; }
 </style>
 </head>
 <body>
@@ -29,22 +43,39 @@
 <p class="sub">Connect the local Jira Data Center MCP server. Everything stays on this machine.</p>
 
 <form id="f" autocomplete="off">
-  <label>Jira URL <small>(e.g. https://jira.company.com)</small>
-    <input type="url" id="jiraUrl" required placeholder="https://jira.company.com"></label>
-  <label>Personal Access Token
-    <input type="password" id="token" placeholder="Paste your PAT"></label>
-  <label>Project key(s) <small>(comma-separated, e.g. PLAT,CORE)</small>
-    <input type="text" id="projectKeys" required placeholder="PLAT"></label>
-  <label><input type="checkbox" id="write"> Allow write tools (create/update issues, comments, transitions)</label>
-  <details><summary>Advanced</summary>
-    <label>Corporate root CA file <small>(PEM path, optional)</small>
-      <input type="text" id="ca" placeholder="/path/to/corp-root-ca.pem"></label>
-  </details>
-  <div class="row">
-    <button type="button" id="test">Test connection</button>
-    <button type="submit" class="primary">Save &amp; get MCP config</button>
-    <button type="button" id="quit" style="margin-left:auto">Close</button>
-  </div>
+  <section id="step1">
+    <p class="step">Step 1 of 2 · Connect</p>
+    <label>Jira URL <small>(e.g. https://jira.company.com)</small>
+      <input type="url" id="jiraUrl" required placeholder="https://jira.company.com"></label>
+    <label>Personal Access Token
+      <input type="password" id="token" placeholder="Paste your PAT"></label>
+    <details><summary>Advanced</summary>
+      <label>Corporate root CA file <small>(PEM path, optional)</small>
+        <input type="text" id="ca" placeholder="/path/to/corp-root-ca.pem"></label>
+    </details>
+    <div class="row">
+      <button type="button" class="quit" title="Stop the setup server">Close server</button>
+      <button type="submit" class="primary" id="next">Next</button>
+    </div>
+  </section>
+  <section id="step2" hidden>
+    <p class="step">Step 2 of 2 · Projects</p>
+    <label for="ddBtn">Allowed project(s) <small>(JIRA_ALLOWED_PROJECTS)</small></label>
+    <div class="dd" id="dd">
+      <button type="button" id="ddBtn" aria-haspopup="listbox" aria-expanded="false"><span id="ddText">Select projects…</span><span aria-hidden="true">▾</span></button>
+      <div class="dd-panel" id="ddPanel" hidden>
+        <input type="search" id="filter" placeholder="Filter projects" aria-label="Filter projects">
+        <div class="dd-actions"><button type="button" id="selAll">Select shown</button><button type="button" id="selNone">Clear</button></div>
+        <div id="list" role="listbox" aria-multiselectable="true"></div>
+      </div>
+    </div>
+    <label><input type="checkbox" id="write"> Allow write tools (create/update issues, comments, transitions)</label>
+    <div class="row">
+      <button type="button" class="quit" title="Stop the setup server">Close server</button>
+      <button type="button" id="back">Back</button>
+      <button type="button" class="primary" id="save">Save &amp; get MCP config</button>
+    </div>
+  </section>
 </form>
 <div id="msg"></div>
 
@@ -61,19 +92,24 @@
   <p>JetBrains AI Assistant / Claude Desktop (<code>mcpServers</code>)</p>
   <pre id="jb"></pre><button type="button" data-copy="jb">Copy</button>
   <p class="sub">The config contains no secrets: the token is stored in your user profile (owner-only file) and read by the app.</p>
+  <div class="row"><button type="button" class="quit" title="Stop the setup server">Close server</button></div>
 </div>
 
 <script>
 const T = "__TOKEN__";
 const $ = id => document.getElementById(id);
 
+let projects = [];
+const selected = new Set();
+
 function show(kind, text) { const m = $('msg'); m.className = kind; m.textContent = text; }
+function connection() {
+  return { jiraUrl: $('jiraUrl').value, personalToken: $('token').value, customCaCertPath: $('ca').value };
+}
 function body() {
-  return JSON.stringify({
-    jiraUrl: $('jiraUrl').value, personalToken: $('token').value,
-    projectKeys: $('projectKeys').value, enableWriteTools: $('write').checked,
-    customCaCertPath: $('ca').value,
-  });
+  return JSON.stringify({ ...connection(),
+    projectKeys: projects.filter(p => selected.has(p.key)).map(p => p.key).join(','),
+    enableWriteTools: $('write').checked });
 }
 async function call(path, payload) {
   const r = await fetch(path, { method: 'POST', headers: { 'X-Setup-Token': T, 'Content-Type': 'application/json' }, body: payload });
@@ -81,23 +117,66 @@ async function call(path, payload) {
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
-$('test').onclick = async () => {
-  show('ok', 'Testing…');
-  try { const j = await call('/api/test', body()); show('ok', j.message); }
-  catch (e) { show('err', e.message); }
-};
+function step(n) {
+  $('step1').hidden = n !== 1; $('step2').hidden = n !== 2;
+  $('result').style.display = 'none';
+}
+function summary() {
+  const keys = projects.filter(p => selected.has(p.key)).map(p => p.key);
+  $('ddText').textContent = keys.length ? `${keys.join(', ')} (${keys.length} selected)` : 'Select projects…';
+}
+function renderList() {
+  const q = $('filter').value.trim().toLowerCase();
+  const list = $('list'); list.replaceChildren();
+  const shown = projects.filter(p => !q || `${p.key} ${p.name || ''}`.toLowerCase().includes(q));
+  for (const p of shown) {
+    const l = document.createElement('label'); l.setAttribute('role', 'option');
+    const c = document.createElement('input'); c.type = 'checkbox'; c.checked = selected.has(p.key);
+    c.onchange = () => { c.checked ? selected.add(p.key) : selected.delete(p.key); l.setAttribute('aria-selected', c.checked); summary(); };
+    l.setAttribute('aria-selected', c.checked);
+    l.append(c, ` ${p.key}`, p.name ? ` — ${p.name}` : '');
+    list.append(l);
+  }
+  if (!shown.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'No matching projects'; list.append(d); }
+  return shown;
+}
+function toggleDropdown(open) {
+  $('ddPanel').hidden = !open; $('ddBtn').setAttribute('aria-expanded', open);
+  if (open) { renderList(); $('filter').focus(); }
+}
+$('ddBtn').onclick = () => toggleDropdown($('ddPanel').hidden);
+$('filter').oninput = renderList;
+$('filter').onkeydown = e => { if (e.key === 'Enter') e.preventDefault(); if (e.key === 'Escape') toggleDropdown(false); };
+$('selAll').onclick = () => { renderList().forEach(p => selected.add(p.key)); renderList(); summary(); };
+$('selNone').onclick = () => { selected.clear(); renderList(); summary(); };
+document.addEventListener('click', e => { if (!$('dd').contains(e.target)) toggleDropdown(false); });
+
 $('f').onsubmit = async ev => {
   ev.preventDefault();
+  if (!$('step1').hidden) {
+    show('ok', 'Connecting to Jira…'); $('next').disabled = true;
+    try {
+      const j = await call('/api/projects', JSON.stringify(connection()));
+      projects = j.projects || [];
+      const keep = new Set([...selected, ...(j.selected || [])]);
+      selected.clear(); projects.forEach(p => keep.has(p.key) && selected.add(p.key));
+      $('filter').value = ''; summary(); step(2); show('ok', j.message);
+    } catch (e) { show('err', e.message); }
+    finally { $('next').disabled = false; }
+  }
+};
+$('back').onclick = () => { toggleDropdown(false); step(1); $('msg').className = ''; };
+$('save').onclick = async () => {
+  toggleDropdown(false);
   show('ok', 'Saving…');
   try {
     const j = await call('/api/save', body());
     show('ok', j.message);
     $('vscode').textContent = j.vscode; $('jb').textContent = j.mcpServers;
     $('result').style.display = 'block';
-    $('token').value = '';
   } catch (e) { show('err', e.message); }
 };
-$('quit').onclick = async () => { try { await call('/api/quit', '{}'); } catch (e) {} document.body.innerHTML = '<p>Setup closed. You can close this tab.</p>'; };
+document.querySelectorAll('.quit').forEach(b => b.onclick = async () => { try { await call('/api/quit', '{}'); } catch (e) {} document.body.innerHTML = '<p>Setup closed. You can close this tab.</p>'; });
 document.querySelectorAll('[data-install]').forEach(b => b.onclick = async () => {
   try { const j = await call('/api/install', JSON.stringify({ target: b.dataset.install })); show('ok', j.message); }
   catch (e) { show('err', e.message); }
@@ -107,7 +186,7 @@ document.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigato
 (async () => {
   const r = await fetch('/api/settings', { headers: { 'X-Setup-Token': T } });
   const s = await r.json();
-  $('jiraUrl').value = s.jiraUrl || ''; $('projectKeys').value = s.projectKeys || '';
+  $('jiraUrl').value = s.jiraUrl || '';
   $('write').checked = !!s.enableWriteTools; $('ca').value = s.customCaCertPath || '';
   if (s.hasToken) $('token').placeholder = 'Saved – leave blank to keep';
 })();

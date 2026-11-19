@@ -1,5 +1,6 @@
 // Package setupui serves a small localhost-only web form that collects the Jira
-// URL, PAT and project key, validates them against Jira and stores them.
+// URL and PAT, lists the projects visible to the token, lets the user pick
+// the allowed ones, validates them against Jira and stores them.
 package setupui
 
 import (
@@ -15,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,6 +40,7 @@ type Server struct {
 	load     func() (settings.Settings, error)
 	save     func(settings.Settings) error
 	validate func(ctx context.Context, s settings.Settings) (string, error)
+	projects func(ctx context.Context, s settings.Settings) (string, []jira.Project, error)
 	targets  func() ([]Target, error)
 	quit     chan struct{}
 	listener net.Listener
@@ -60,6 +63,7 @@ func New(exePath string) (*Server, error) {
 		load:     settings.Load,
 		save:     settings.Save,
 		validate: validateAgainstJira,
+		projects: Projects,
 		targets:  Targets,
 		quit:     make(chan struct{}),
 		listener: ln,
@@ -97,7 +101,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /favicon.png", handleFavicon)
 	mux.HandleFunc("GET /api/settings", s.guard(s.handleSettings))
-	mux.HandleFunc("POST /api/test", s.guard(s.handleTest))
+	mux.HandleFunc("POST /api/projects", s.guard(s.handleProjects))
 	mux.HandleFunc("POST /api/save", s.guard(s.handleSave))
 	mux.HandleFunc("POST /api/install", s.guard(s.handleInstall))
 	mux.HandleFunc("POST /api/quit", s.guard(s.handleQuit))
@@ -175,34 +179,71 @@ func (s *Server) readForm(r *http.Request) (settings.Settings, error) {
 	return Normalize(in, fallback)
 }
 
-// Normalize trims the form values, upper-cases project keys and uses
-// fallbackToken when no token was entered. It is shared by all setup UIs.
-func Normalize(in settings.Settings, fallbackToken string) (settings.Settings, error) {
+// NormalizeConnection trims the connection fields (URL, PAT, CA path) and
+// uses fallbackToken when no token was entered. It is shared by all setup UIs.
+func NormalizeConnection(in settings.Settings, fallbackToken string) settings.Settings {
 	in.JiraURL = strings.TrimSpace(in.JiraURL)
 	in.PersonalToken = strings.TrimSpace(in.PersonalToken)
-	in.ProjectKeys = strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(in.ProjectKeys), " ", ""))
 	in.CustomCACertPath = strings.TrimSpace(in.CustomCACertPath)
 	if in.PersonalToken == "" {
 		in.PersonalToken = fallbackToken
 	}
+	return in
+}
+
+// Normalize applies NormalizeConnection, upper-cases project keys and requires
+// at least one. It is shared by all setup UIs.
+func Normalize(in settings.Settings, fallbackToken string) (settings.Settings, error) {
+	in = NormalizeConnection(in, fallbackToken)
+	in.ProjectKeys = strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(in.ProjectKeys), " ", ""))
 	if in.ProjectKeys == "" {
-		return in, errors.New("project key is required")
+		return in, errors.New("select at least one project")
 	}
 	return in, nil
 }
 
-func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
-	in, err := s.readForm(r)
+// SplitKeys returns the non-empty, upper-cased keys of a comma-separated list.
+func SplitKeys(keys string) []string {
+	var out []string
+	for _, k := range strings.Split(keys, ",") {
+		if k = strings.ToUpper(strings.TrimSpace(k)); k != "" {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	var in settings.Settings
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&in); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	cur, err := s.load()
+	if err != nil {
+		slog.Warn("could not load settings", "error", err)
+	}
+	in = NormalizeConnection(in, cur.PersonalToken)
+	user, projects, err := s.projects(r.Context(), in)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	msg, err := s.validate(r.Context(), in)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
+	have := map[string]bool{}
+	for _, p := range projects {
+		have[p.Key] = true
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": msg})
+	selected := []string{}
+	for _, k := range SplitKeys(cur.ProjectKeys) {
+		if have[k] {
+			selected = append(selected, k)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":  fmt.Sprintf("Connected to Jira as %s. Select the project(s) the MCP server may access (%d available).", user, len(projects)),
+		"projects": projects,
+		"selected": selected,
+	})
 }
 
 func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
@@ -275,15 +316,59 @@ func Validate(ctx context.Context, s settings.Settings) (string, error) {
 	return validateAgainstJira(ctx, s)
 }
 
-func validateAgainstJira(ctx context.Context, s settings.Settings) (string, error) {
+// Projects authenticates with the URL/PAT (ignoring any project allowlist)
+// and returns the user's display name and every project visible to the
+// token, sorted by key.
+func Projects(ctx context.Context, s settings.Settings) (string, []jira.Project, error) {
+	s.ProjectKeys = ""
+	client, _, err := newClient(s)
+	if err != nil {
+		return "", nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	me, err := client.GetCurrentUser(ctx)
+	if err != nil {
+		return "", nil, fmt.Errorf("could not authenticate against Jira: %w", err)
+	}
+	projects, err := client.ListProjects(ctx)
+	if err != nil {
+		return "", nil, fmt.Errorf("authenticated, but listing projects failed: %w", err)
+	}
+	if len(projects) == 0 {
+		return "", nil, errors.New("authenticated, but this token cannot see any projects")
+	}
+	for i := range projects {
+		projects[i].Key = strings.ToUpper(projects[i].Key)
+	}
+	slices.SortFunc(projects, func(a, b jira.Project) int { return strings.Compare(a.Key, b.Key) })
+	return displayName(me), projects, nil
+}
+
+func newClient(s settings.Settings) (*jira.Client, *config.Config, error) {
 	if s.PersonalToken == "" {
-		return "", errors.New("personal access token is required")
+		return nil, nil, errors.New("personal access token is required")
 	}
 	cfg, err := config.LoadFrom(s.Getenv(func(string) string { return "" }))
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
 	client, err := jira.NewClient(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, cfg, nil
+}
+
+func displayName(u *jira.User) string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	return u.Name
+}
+
+func validateAgainstJira(ctx context.Context, s settings.Settings) (string, error) {
+	client, cfg, err := newClient(s)
 	if err != nil {
 		return "", err
 	}
@@ -306,11 +391,7 @@ func validateAgainstJira(ctx context.Context, s settings.Settings) (string, erro
 			return "", fmt.Errorf("project %q was not found or is not visible to this token", k)
 		}
 	}
-	name := me.DisplayName
-	if name == "" {
-		name = me.Name
-	}
-	return fmt.Sprintf("Connected to Jira as %s; project(s) %s OK.", name, strings.Join(cfg.AllowedProjects, ", ")), nil
+	return fmt.Sprintf("Connected to Jira as %s; project(s) %s OK.", displayName(me), strings.Join(cfg.AllowedProjects, ", ")), nil
 }
 
 // VSCodeSnippet renders a VS Code / Copilot mcp.json entry.

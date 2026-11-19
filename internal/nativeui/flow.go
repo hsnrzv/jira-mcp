@@ -4,132 +4,197 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
+	"github.com/internal/jira-mcp/internal/jira"
 	"github.com/internal/jira-mcp/internal/settings"
 	"github.com/internal/jira-mcp/internal/setupui"
 )
 
+// Title is the window title.
+const Title = "Jira MCP Setup"
+
 const (
-	title = "Jira MCP Setup"
-	intro = "Connect the local Jira Data Center MCP server. Everything stays on this machine."
+	intro        = "Connect the local Jira Data Center MCP server. Everything stays on this machine."
+	keepTokenTip = "leave blank to keep the current token"
+	registerHelp = "Register the server with your IDE/agent. Install adds a \"jira\" entry to its config " +
+		"(other servers are kept; a .bak backup is written). Copy puts a config snippet on the clipboard. " +
+		"The config contains no secrets."
 )
 
-// Flow runs the setup wizard (form → test/save → register with IDEs) using
-// native dialogs. It shares validation and install logic with the web UI.
+// Flow runs the setup wizard (connect → pick projects → save → register with
+// IDEs) in one native window. It shares validation and install logic with the
+// web UI.
 type Flow struct {
-	UI       Dialogs
-	ExePath  string
-	Load     func() (settings.Settings, error)
-	Save     func(settings.Settings) error
-	Validate func(context.Context, settings.Settings) (string, error)
-	Targets  func() ([]setupui.Target, error)
+	UI           Window
+	ExePath      string
+	Load         func() (settings.Settings, error)
+	Save         func(settings.Settings) error
+	Validate     func(context.Context, settings.Settings) (string, error)
+	ListProjects func(context.Context, settings.Settings) (string, []jira.Project, error)
+	Targets      func() ([]setupui.Target, error)
+
+	values  settings.Settings // current form values, without the token
+	token   string            // kept in memory only, never sent to the window
+	targets []setupui.Target
 }
 
 // NewFlow returns a Flow wired to the real settings store, Jira and targets.
-func NewFlow(ui Dialogs, exePath string) *Flow {
+func NewFlow(ui Window, exePath string) *Flow {
 	return &Flow{
-		UI:       ui,
-		ExePath:  exePath,
-		Load:     settings.Load,
-		Save:     settings.Save,
-		Validate: setupui.Validate,
-		Targets:  setupui.Targets,
+		UI:           ui,
+		ExePath:      exePath,
+		Load:         settings.Load,
+		Save:         settings.Save,
+		Validate:     setupui.Validate,
+		ListProjects: setupui.Projects,
+		Targets:      setupui.Targets,
 	}
 }
 
-// Run shows the dialogs until the user saves and closes, or cancels. A
-// returned error means the native dialog itself failed.
+// Run shows the wizard and handles user actions until the window is closed
+// (window close button or "Close server"). A returned error means the native
+// window itself failed.
 func (f *Flow) Run(ctx context.Context) error {
 	saved, err := f.Load()
 	if err != nil {
 		slog.Warn("could not load settings", "error", err)
 	}
-	// token is kept in memory only: the dialog shows a blank password field and
-	// a blank submission keeps the saved (or previously entered) token.
-	token := saved.PersonalToken
-	values := saved
-	values.PersonalToken = ""
-	msg := intro
+	f.token = saved.PersonalToken
+	f.values = saved
+	f.values.PersonalToken = ""
+	if err := f.showConnect(); err != nil {
+		return err
+	}
 	for {
-		hint := ""
-		if token != "" {
-			hint = "leave blank to keep the current token"
-		}
-		res, err := f.UI.Form(ctx, FormRequest{Title: title, Message: msg, TokenHint: hint, Values: values})
+		ev, err := f.UI.Next(ctx)
 		if err != nil {
 			return err
 		}
-		if res.Action == ActionCancel {
+		switch ev.Action {
+		case ActionClose:
 			return nil
+		case ActionNext:
+			err = f.connect(ctx, ev)
+		case ActionBack:
+			f.keepSelection(ev)
+			err = f.showConnect()
+		case ActionSave:
+			f.keepSelection(ev)
+			err = f.save(ctx)
+		case ActionChoose:
+			err = f.choose(ev.Index)
+		default:
+			slog.Warn("ignoring unknown setup window action", "action", string(ev.Action))
 		}
-		in, nerr := setupui.Normalize(res.Values, token)
-		token = in.PersonalToken
-		values = in
-		values.PersonalToken = ""
-		if nerr != nil {
-			msg = "Error: " + nerr.Error()
-			continue
-		}
-		info, err := f.Validate(ctx, in)
 		if err != nil {
-			msg = "Error: " + err.Error()
-			continue
+			return err
 		}
-		if res.Action == ActionTest {
-			msg = "Connection OK. " + info + "\nClick Save to store the settings."
-			continue
-		}
-		if err := f.Save(in); err != nil {
-			slog.Error("save settings failed", "error", err)
-			msg = "Error: could not save settings."
-			continue
-		}
-		return f.register(ctx, "Saved. "+info)
 	}
 }
 
-// register offers one-click install into IDE configs and clipboard snippets.
-func (f *Flow) register(ctx context.Context, status string) error {
-	targets, err := f.Targets()
+// opContext is cancelled when the window closes, so "Close server" aborts a
+// slow Jira call (for example through an unresponsive proxy) at once.
+func (f *Flow) opContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-f.UI.Closed():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
+func (f *Flow) showConnect() error {
+	hint := ""
+	if f.token != "" {
+		hint = keepTokenTip
+	}
+	return f.UI.ShowConnect(ConnectPage{
+		Message: intro, JiraURL: f.values.JiraURL, CustomCACertPath: f.values.CustomCACertPath, TokenHint: hint,
+	})
+}
+
+func (f *Flow) connect(ctx context.Context, ev Event) error {
+	conn := setupui.NormalizeConnection(settings.Settings{
+		JiraURL: ev.JiraURL, PersonalToken: ev.PersonalToken, CustomCACertPath: ev.CustomCACertPath,
+	}, f.token)
+	f.values.JiraURL, f.values.CustomCACertPath = conn.JiraURL, conn.CustomCACertPath
+	f.token = conn.PersonalToken
+	opCtx, cancel := f.opContext(ctx)
+	defer cancel()
+	user, projects, err := f.ListProjects(opCtx, conn)
+	if err != nil {
+		return f.UI.Status("Error: "+err.Error(), true)
+	}
+	have := map[string]bool{}
+	for _, p := range projects {
+		have[p.Key] = true
+	}
+	var selected []string
+	for _, k := range setupui.SplitKeys(f.values.ProjectKeys) {
+		if have[k] {
+			selected = append(selected, k)
+		}
+	}
+	return f.UI.ShowProjects(ProjectsPage{
+		Message:          fmt.Sprintf("Connected to Jira as %s. Select the project(s) the MCP server may access (%d available).", user, len(projects)),
+		Projects:         projects,
+		Selected:         selected,
+		EnableWriteTools: f.values.EnableWriteTools,
+	})
+}
+
+func (f *Flow) keepSelection(ev Event) {
+	f.values.ProjectKeys = strings.Join(ev.ProjectKeys, ",")
+	f.values.EnableWriteTools = ev.EnableWriteTools
+}
+
+func (f *Flow) save(ctx context.Context) error {
+	in, err := setupui.Normalize(f.values, f.token)
+	if err != nil {
+		return f.UI.Status("Error: "+err.Error(), true)
+	}
+	opCtx, cancel := f.opContext(ctx)
+	defer cancel()
+	info, err := f.Validate(opCtx, in)
+	if err != nil {
+		return f.UI.Status("Error: "+err.Error(), true)
+	}
+	if err := f.Save(in); err != nil {
+		slog.Error("save settings failed", "error", err)
+		return f.UI.Status("Error: could not save settings.", true)
+	}
+	f.targets, err = f.Targets()
 	if err != nil {
 		slog.Warn("could not determine MCP client configs", "error", err)
 	}
-	buttons := []string{"Done"}
-	for _, t := range targets {
+	buttons := make([]string, 0, len(f.targets)+2)
+	for _, t := range f.targets {
 		buttons = append(buttons, "Install in "+t.Label)
 	}
-	copyVSCode, copyMCPServers := len(buttons), len(buttons)+1
 	buttons = append(buttons, "Copy VS Code config", "Copy JetBrains / Claude config")
-	const help = "\n\nRegister the server with your IDE/agent. Install adds a \"jira\" entry to its config " +
-		"(other servers are kept; a .bak backup is written). Copy puts a config snippet on the clipboard. " +
-		"The config contains no secrets."
-	for {
-		i, err := f.UI.Choose(ctx, title, status+help, buttons)
-		if err != nil {
-			return err
-		}
-		switch {
-		case i <= 0:
-			return nil
-		case i == copyVSCode:
-			status = f.copy(ctx, "VS Code / GitHub Copilot (mcp.json)", setupui.VSCodeSnippet(f.ExePath))
-		case i == copyMCPServers:
-			status = f.copy(ctx, "JetBrains / Claude Desktop (mcpServers)", setupui.MCPServersSnippet(f.ExePath))
-		default:
-			t := targets[i-1]
-			if err := t.Install(f.ExePath); err != nil {
-				status = "Error: " + err.Error()
-			} else {
-				status = fmt.Sprintf("Added \"jira\" to %s (%s). Restart your IDE/agent.", t.Label, t.Path)
-			}
-		}
-	}
+	return f.UI.ShowRegister(RegisterPage{Message: registerHelp, Status: "Saved. " + info, Buttons: buttons})
 }
 
-func (f *Flow) copy(ctx context.Context, label, text string) string {
-	if err := f.UI.Copy(ctx, text); err != nil {
-		slog.Warn("clipboard copy failed", "error", err)
-		return "Error: could not copy to the clipboard. Run \"" + f.ExePath + " setup --web\" to see the snippet."
+// choose handles a step-3 button: install targets first, then the two copy
+// buttons.
+func (f *Flow) choose(i int) error {
+	n := len(f.targets)
+	switch {
+	case i >= 0 && i < n:
+		t := f.targets[i]
+		if err := t.Install(f.ExePath); err != nil {
+			return f.UI.Status("Error: "+err.Error(), true)
+		}
+		return f.UI.Status(fmt.Sprintf("Added \"jira\" to %s (%s). Restart your IDE/agent.", t.Label, t.Path), false)
+	case i == n:
+		return f.UI.Copy(setupui.VSCodeSnippet(f.ExePath), "Copied the VS Code / GitHub Copilot (mcp.json) config to the clipboard.")
+	case i == n+1:
+		return f.UI.Copy(setupui.MCPServersSnippet(f.ExePath), "Copied the JetBrains / Claude Desktop (mcpServers) config to the clipboard.")
+	default:
+		return f.UI.Status("Error: unknown option.", true)
 	}
-	return "Copied the " + label + " config to the clipboard."
 }

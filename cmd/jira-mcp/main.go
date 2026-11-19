@@ -85,10 +85,11 @@ func runSetup(ctx context.Context, web bool) int {
 }
 
 func runNativeSetup(ctx context.Context, exe string) error {
-	ui, err := nativeui.New(setupui.IconPNG())
+	ui, err := nativeui.Open(ctx, nativeui.Title, setupui.IconPNG())
 	if err != nil {
 		return err
 	}
+	defer func() { _ = ui.Close() }()
 	return nativeui.NewFlow(ui, exe).Run(ctx)
 }
 
