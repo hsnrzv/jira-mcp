@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/internal/jira-mcp/internal/config"
 	"github.com/internal/jira-mcp/internal/jira"
 	"github.com/internal/jira-mcp/internal/mcpserver"
+	"github.com/internal/jira-mcp/internal/nativeui"
 	"github.com/internal/jira-mcp/internal/settings"
 	"github.com/internal/jira-mcp/internal/setupui"
 )
@@ -21,7 +23,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// No arguments (e.g. double-click) opens the setup UI; MCP clients launch "serve".
+	// No arguments (e.g. double-click) opens the setup dialog; MCP clients launch "serve".
 	cmd := "setup"
 	if len(os.Args) > 1 {
 		cmd = os.Args[1]
@@ -30,9 +32,10 @@ func main() {
 	case "serve":
 		os.Exit(runServe(ctx))
 	case "setup":
-		os.Exit(runSetup(ctx))
+		web := len(os.Args) > 2 && os.Args[2] == "--web"
+		os.Exit(runSetup(ctx, web))
 	default:
-		fmt.Fprintf(os.Stderr, "usage: %s [setup|serve]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [setup [--web]|serve]\n", os.Args[0])
 		os.Exit(2)
 	}
 }
@@ -66,9 +69,31 @@ func runServe(ctx context.Context) int {
 	return 0
 }
 
-func runSetup(ctx context.Context) int {
+func runSetup(ctx context.Context, web bool) int {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	srv, err := setupui.New(setupui.ExecutablePath())
+	exe := setupui.ExecutablePath()
+	if !web {
+		err := runNativeSetup(ctx, exe)
+		if err == nil || ctx.Err() != nil {
+			return 0
+		}
+		if !errors.Is(err, nativeui.ErrUnsupported) {
+			slog.Warn("native setup dialog failed; falling back to the browser form", "error", err)
+		}
+	}
+	return runWebSetup(ctx, exe)
+}
+
+func runNativeSetup(ctx context.Context, exe string) error {
+	ui, err := nativeui.New(setupui.IconPNG())
+	if err != nil {
+		return err
+	}
+	return nativeui.NewFlow(ui, exe).Run(ctx)
+}
+
+func runWebSetup(ctx context.Context, exe string) int {
+	srv, err := setupui.New(exe)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cannot start setup UI:", err)
 		return 1

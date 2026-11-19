@@ -4,7 +4,7 @@ Lightweight, clean-room Go MCP server for **Jira Data Center** (REST API v2 + Ag
 
 ## Quick start (colleagues — no Docker, no clone)
 
-Download the zip for your OS, double-click `Jira MCP.app` / `JiraMCP.exe`, paste Jira URL, PAT and project key into the form that opens in your browser, then copy the generated MCP config into your IDE. Details: `doc/runbooks/desktop-app.md`. The MCP server itself runs as `jira-mcp serve`.
+Download the zip for your OS, double-click `Jira MCP.app` / `JiraMCP.exe`, paste Jira URL, PAT and project key into the native setup dialog, then install or copy the generated MCP config into your IDE. Details: `doc/runbooks/desktop-app.md`. The MCP server itself runs as `jira-mcp serve`.
 
 ## Configuration (environment; overrides values saved by the setup UI)
 
