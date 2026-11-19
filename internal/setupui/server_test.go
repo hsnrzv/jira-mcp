@@ -44,6 +44,8 @@ func TestAccessControl(t *testing.T) {
 		{"index ok", "GET", "/?t=" + s.token, host, "", 200},
 		{"index bad token", "GET", "/?t=nope", host, "", 403},
 		{"rebinding host", "GET", "/?t=" + s.token, "evil.com", "", 403},
+		{"favicon public", "GET", "/favicon.png", host, "", 200},
+		{"favicon rebinding host", "GET", "/favicon.png", "evil.com", "", 403},
 		{"api no token", "GET", "/api/settings", host, "", 403},
 		{"api ok", "GET", "/api/settings", host, s.token, 200},
 	}

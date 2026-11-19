@@ -26,6 +26,11 @@ import (
 //go:embed index.html
 var indexHTML string
 
+// faviconPNG is generated from assets/icon.svg by scripts/generate-icons.sh.
+//
+//go:embed favicon.png
+var faviconPNG []byte
+
 // Server is the setup web UI.
 type Server struct {
 	token    string
@@ -90,6 +95,7 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
+	mux.HandleFunc("GET /favicon.png", handleFavicon)
 	mux.HandleFunc("GET /api/settings", s.guard(s.handleSettings))
 	mux.HandleFunc("POST /api/test", s.guard(s.handleTest))
 	mux.HandleFunc("POST /api/save", s.guard(s.handleSave))
@@ -134,6 +140,12 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(strings.Replace(indexHTML, "__TOKEN__", s.token, 1)))
+}
+
+// handleFavicon serves the public app icon; it needs no session token.
+func handleFavicon(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	_, _ = w.Write(faviconPNG)
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, _ *http.Request) {
