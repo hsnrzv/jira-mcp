@@ -236,3 +236,45 @@ func TestGetIssueContext(t *testing.T) {
 		t.Errorf("attachments: %+v", ctx.Attachments)
 	}
 }
+
+func TestDownloadAttachmentContextPath(t *testing.T) {
+	var c *Client
+	c = newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/jira/rest/api/2/issue/ABC-1":
+			base := strings.TrimSuffix(c.cfg.JiraURL, "/jira")
+			_, _ = w.Write([]byte(`{"key":"ABC-1","fields":{"attachment":[
+			{"id":"1","filename":"a.png","mimeType":"image/png","content":"` + c.cfg.JiraURL + `/secure/attachment/1/a.png"},
+			{"id":"2","filename":"b.png","mimeType":"image/png","content":"http://evil.invalid/jira/secure/attachment/2/b.png"},
+			{"id":"3","filename":"c.png","mimeType":"image/png","content":"` + base + `/other/secure/attachment/3/c.png"}]}}`))
+		case "/jira/secure/attachment/1/a.png":
+			if r.Header.Get("Authorization") != "Bearer tok123" {
+				t.Error("missing auth on download")
+			}
+			_, _ = w.Write([]byte("PNG"))
+		default:
+			http.Redirect(w, r, "/jira/login.jsp", http.StatusFound)
+		}
+	}, func(cfg *config.Config) { cfg.JiraURL += "/jira" })
+
+	tests := []struct {
+		id      string
+		wantErr bool
+	}{
+		{"1", false},
+		{"2", true},
+		{"3", true},
+	}
+	for _, tt := range tests {
+		a, err := c.DownloadAttachment(context.Background(), "ABC-1", tt.id)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("id %s: expected error", tt.id)
+			}
+			continue
+		}
+		if err != nil || string(a.Data) != "PNG" {
+			t.Errorf("id %s: err=%v content=%+v", tt.id, err, a)
+		}
+	}
+}

@@ -20,4 +20,4 @@
 
 Text fields use Jira wiki markup (API v2), not ADF. Errors: non-2xx responses decode to `JiraAPIError` (`errorMessages`, `errors`).
 
-Attachment downloads: the content URL must be on the configured Jira host (the PAT is never sent elsewhere), redirects are refused, size is capped at 5 MB (100 KB per file / 400 KB total when inlined by `jira_get_issue_context`), and the attachment must belong to the given issue so the project allow-list applies. Linked issues, parents and subtasks outside the allow-list are filtered out.
+Attachment downloads: the content URL must be on the configured Jira scheme/host and under the `JIRA_URL` path (the PAT is never sent elsewhere); it is requested as-is, because it already includes Jira's context path (e.g. `/jira`) — appending it to `JIRA_URL` would double that prefix and Jira answers with a 302 to `login.jsp`. Redirects are refused, size is capped at 5 MB (100 KB per file / 400 KB total when inlined by `jira_get_issue_context`), and the attachment must belong to the given issue so the project allow-list applies. Linked issues, parents and subtasks outside the allow-list are filtered out.

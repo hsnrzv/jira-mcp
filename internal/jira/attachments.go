@@ -79,13 +79,17 @@ func (c *Client) download(ctx context.Context, att Attachment, limit int64) (*At
 		return nil, fmt.Errorf("attachment %s has no valid content URL", att.ID)
 	}
 	// Never send the bearer token to another host.
-	if u.Scheme != base.Scheme || u.Host != base.Host {
+	if u.Scheme != base.Scheme || u.Host != base.Host || !strings.HasPrefix(u.Path, base.Path+"/") {
 		return nil, fmt.Errorf("attachment %s content URL is not on the configured Jira host", att.ID)
 	}
-	req, err := c.newRequest(ctx, http.MethodGet, u.RequestURI(), nil, nil)
+	// The content URL already contains Jira's context path (e.g. /jira), so it is
+	// requested as-is rather than appended to JiraURL.
+	req, err := c.newRequest(ctx, http.MethodGet, "", nil, nil)
 	if err != nil {
 		return nil, err
 	}
+	req.URL = u
+	req.Host = u.Host
 	req.Header.Set("Accept", "*/*")
 	resp, err := c.http.Do(req)
 	if err != nil {
