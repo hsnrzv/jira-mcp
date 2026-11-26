@@ -10,6 +10,9 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/hsnrzv/jira-mcp/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hsnrzv/jira-mcp/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/hsnrzv/jira-mcp/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/hsnrzv/jira-mcp"></a>
+  <a href="https://goreportcard.com/report/github.com/hsnrzv/jira-mcp"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/hsnrzv/jira-mcp"></a>
   <img alt="Go version" src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-6E56CF">
   <img alt="Jira Data Center" src="https://img.shields.io/badge/Jira-Data%20Center-0052CC?logo=jira&logoColor=white">
@@ -40,7 +43,7 @@ public REST API v2 and Agile 1.0, and its only third-party dependency is the off
 
 ### Option A – Desktop app (recommended)
 
-1. Download the archive for your OS from the [Releases](../../releases) page
+1. Download the archive for your OS from the [Releases](https://github.com/hsnrzv/jira-mcp/releases/latest) page
    (`JiraMCP-macos-arm64.dmg`, `JiraMCP-macos-amd64.zip`, `JiraMCP-windows-amd64.zip`, `JiraMCP-linux-amd64.zip`).
 2. Start **Jira MCP** (macOS: right-click → *Open* on first launch, the app is not notarised;
    Windows: SmartScreen → *More info* → *Run anyway*).
@@ -52,8 +55,11 @@ Step-by-step guide: [doc/runbooks/desktop-app.md](doc/runbooks/desktop-app.md).
 ### Option B – Build from source
 
 ```sh
-git clone <this-repo-url> jira-mcp && cd jira-mcp
+go install github.com/hsnrzv/jira-mcp/cmd/jira-mcp@latest
+# or
+git clone https://github.com/hsnrzv/jira-mcp.git && cd jira-mcp
 go build -o jira-mcp ./cmd/jira-mcp
+
 ./jira-mcp            # opens the setup wizard
 ./jira-mcp serve      # runs the MCP server over stdio (what your IDE launches)
 ```

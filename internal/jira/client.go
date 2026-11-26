@@ -14,7 +14,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/internal/jira-mcp/internal/config"
+	"github.com/hsnrzv/jira-mcp/internal/config"
 )
 
 // ErrWriteDisabled is returned by any mutating call when write tools are disabled.

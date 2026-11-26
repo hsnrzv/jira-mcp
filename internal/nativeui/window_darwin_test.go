@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/internal/jira-mcp/internal/jira"
-	"github.com/internal/jira-mcp/internal/setupui"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/setupui"
 )
 
 // testDriver is appended to the real window script. It keeps the window off

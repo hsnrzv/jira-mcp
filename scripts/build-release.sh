@@ -21,7 +21,7 @@ for arch in arm64 amd64; do
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>Jira MCP</string>
-  <key>CFBundleIdentifier</key><string>internal.jira-mcp</string>
+  <key>CFBundleIdentifier</key><string>io.github.hsnrzv.jira-mcp</string>
   <key>CFBundleExecutable</key><string>jira-mcp</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleVersion</key><string>$VERSION</string>

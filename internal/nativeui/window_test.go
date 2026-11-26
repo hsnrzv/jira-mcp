@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/internal/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
 )
 
 // fakeProc plays the window process over in-memory pipes.

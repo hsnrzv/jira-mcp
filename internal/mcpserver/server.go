@@ -8,8 +8,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/internal/jira-mcp/internal/config"
-	"github.com/internal/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/config"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
 )
 
 // NewServer builds the MCP server. Write tools are registered only when enabled in cfg.

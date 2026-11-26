@@ -7,8 +7,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/internal/jira-mcp/internal/config"
-	"github.com/internal/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/config"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
 )
 
 func listTools(t *testing.T, write bool) []string {

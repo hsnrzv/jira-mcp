@@ -6,7 +6,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/internal/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
 )
 
 type emptyInput struct{}

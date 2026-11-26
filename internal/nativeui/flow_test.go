@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/internal/jira-mcp/internal/jira"
-	"github.com/internal/jira-mcp/internal/settings"
-	"github.com/internal/jira-mcp/internal/setupui"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/settings"
+	"github.com/hsnrzv/jira-mcp/internal/setupui"
 )
 
 // fakeWindow replays scripted events and records what the flow showed.

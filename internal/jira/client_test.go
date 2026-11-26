@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/internal/jira-mcp/internal/config"
+	"github.com/hsnrzv/jira-mcp/internal/config"
 )
 
 func newTestClient(t *testing.T, h http.HandlerFunc, mut func(*config.Config)) *Client {

@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/internal/jira-mcp/internal/config"
-	"github.com/internal/jira-mcp/internal/jira"
-	"github.com/internal/jira-mcp/internal/settings"
+	"github.com/hsnrzv/jira-mcp/internal/config"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/settings"
 )
 
 //go:embed index.html

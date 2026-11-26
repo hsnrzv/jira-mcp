@@ -11,12 +11,12 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/internal/jira-mcp/internal/config"
-	"github.com/internal/jira-mcp/internal/jira"
-	"github.com/internal/jira-mcp/internal/mcpserver"
-	"github.com/internal/jira-mcp/internal/nativeui"
-	"github.com/internal/jira-mcp/internal/settings"
-	"github.com/internal/jira-mcp/internal/setupui"
+	"github.com/hsnrzv/jira-mcp/internal/config"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/mcpserver"
+	"github.com/hsnrzv/jira-mcp/internal/nativeui"
+	"github.com/hsnrzv/jira-mcp/internal/settings"
+	"github.com/hsnrzv/jira-mcp/internal/setupui"
 )
 
 func main() {

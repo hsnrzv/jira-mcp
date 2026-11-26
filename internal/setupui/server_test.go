@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/internal/jira-mcp/internal/jira"
-	"github.com/internal/jira-mcp/internal/settings"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/settings"
 )
 
 func newTestServer(t *testing.T) (*Server, *settings.Settings) {

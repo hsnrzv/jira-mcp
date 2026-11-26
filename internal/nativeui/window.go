@@ -29,7 +29,7 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/internal/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
 )
 
 // ErrUnsupported is returned by Open on platforms without a native backend.

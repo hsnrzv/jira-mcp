@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/internal/jira-mcp/internal/jira"
-	"github.com/internal/jira-mcp/internal/settings"
-	"github.com/internal/jira-mcp/internal/setupui"
+	"github.com/hsnrzv/jira-mcp/internal/jira"
+	"github.com/hsnrzv/jira-mcp/internal/settings"
+	"github.com/hsnrzv/jira-mcp/internal/setupui"
 )
 
 // Title is the window title.
