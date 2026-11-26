@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest a new tool or improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What would you like the assistant to be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Relevant Jira DC REST endpoint(s) (/rest/api/2 or /rest/agile/1.0), if known.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This concerns Jira Data Center / Server (Jira Cloud and Confluence are out of scope).
+          required: true

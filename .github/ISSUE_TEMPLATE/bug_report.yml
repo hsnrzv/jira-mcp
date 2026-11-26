@@ -1,0 +1,38 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please never paste Personal Access Tokens, internal Jira URLs or confidential issue data.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the tool call / prompt and the observed result.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: jira-mcp version or commit
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: macOS 15 arm64, Jira DC 9.12, GitHub Copilot in IntelliJ
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (stderr, LOG_LEVEL=debug)
+      render: text

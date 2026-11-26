@@ -2,3 +2,6 @@
 dist/
 .DS_Store
 *.syso
+/jira-mcp
+*.exe
+coverage.out
